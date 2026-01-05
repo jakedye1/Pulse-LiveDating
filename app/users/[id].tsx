@@ -36,8 +36,9 @@ export default function UserProfileScreen() {
   const userImages = user.images && user.images.length > 0 ? user.images : [user.image];
 
   const handleImageTap = () => {
-    if (userImages.length > 1) {
+    if (userImages.length > 0) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Tap to cycle next photo, loop back to start
       setCurrentImageIndex((prev) => (prev + 1) % userImages.length);
     }
   };

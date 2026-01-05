@@ -13,7 +13,7 @@ import Layout from '@/constants/layout';
 const { width } = Dimensions.get('window');
 
 const GRID_GAP = 12;
-const GRID_COLUMNS = 3; 
+const GRID_COLUMNS = 3;
 
 interface PhotoManagerProps {
   photos: string[];
@@ -23,20 +23,24 @@ interface PhotoManagerProps {
   containerPadding?: number;
 }
 
-export default function PhotoManager({ 
-  photos, 
-  onPhotosChange, 
+export default function PhotoManager({
+  photos,
+  onPhotosChange,
   maxPhotos = 6,
   isLoading = false,
   containerPadding = Spacing.xl
 }: PhotoManagerProps) {
 
   // Dynamic layout calculations based on padding
+  // Hero slot should be prominent
   const heroWidth = width - (containerPadding * 2);
-  const heroHeight = heroWidth * 1.1;
+  const heroHeight = heroWidth * 1.25; // 4:5 aspect ratio for main photo
+  
+  // Grid items
   const itemWidth = (width - (containerPadding * 2) - (GRID_GAP * (GRID_COLUMNS - 1))) / GRID_COLUMNS;
 
   const requestPermission = async () => {
+    if (Platform.OS === 'web') return true;
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
@@ -51,7 +55,7 @@ export default function PhotoManager({
 
   const pickImage = async (indexToReplace?: number) => {
     if (isLoading) return;
-    
+
     const hasPermission = await requestPermission();
     if (!hasPermission) return;
 
@@ -59,21 +63,21 @@ export default function PhotoManager({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [3, 4],
+        aspect: [4, 5],
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets[0]) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const newUri = result.assets[0].uri;
-        
-        // If replacing
+
         if (typeof indexToReplace === 'number') {
+          // Replace existing
           const newPhotos = [...photos];
           newPhotos[indexToReplace] = newUri;
           onPhotosChange(newPhotos);
         } else {
-          // Adding new
+          // Add new
           if (photos.length < maxPhotos) {
             onPhotosChange([...photos, newUri]);
           }
@@ -81,52 +85,64 @@ export default function PhotoManager({
       }
     } catch (error) {
       console.error('[PhotoManager] Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
     }
   };
 
   const handlePhotoTap = (index: number) => {
     if (isLoading) return;
-    
+
     const isMain = index === 0;
-    
+    const options = [
+      'Cancel',
+      !isMain ? 'Set as Main Photo' : null,
+      'Replace Photo',
+      'Remove Photo'
+    ].filter(Boolean) as string[];
+
+    const destructiveButtonIndex = options.indexOf('Remove Photo');
+    const cancelButtonIndex = options.indexOf('Cancel');
+
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ['Cancel', isMain ? null : 'Set as Main Photo', 'Replace Photo', 'Remove Photo'].filter(Boolean) as string[],
-          destructiveButtonIndex: isMain ? 2 : 3,
-          cancelButtonIndex: 0,
+          options,
+          destructiveButtonIndex,
+          cancelButtonIndex,
           title: isMain ? 'Main Photo' : 'Manage Photo',
         },
         (buttonIndex) => {
-          // Adjust index based on whether "Set as Main Photo" is present
-          const offset = isMain ? 1 : 0;
-          
-          if (buttonIndex === 0) return; // Cancel
-          
-          if (!isMain && buttonIndex === 1) {
-            // Set as Main
-            setAsMain(index);
-          } else if (buttonIndex === 1 + offset) {
-            // Replace
-            pickImage(index);
-          } else if (buttonIndex === 2 + offset) {
-            // Remove
-            removePhoto(index);
-          }
+          const selectedOption = options[buttonIndex];
+          handleOptionSelection(selectedOption, index);
         }
       );
     } else {
-      // Android / Web fallback
       Alert.alert(
         isMain ? 'Main Photo' : 'Manage Photo',
         'Choose an action',
         [
-          { text: 'Cancel', style: 'cancel' },
-          !isMain ? { text: 'Set as Main', onPress: () => setAsMain(index) } : null,
-          { text: 'Replace', onPress: () => pickImage(index) },
-          { text: 'Remove', style: 'destructive', onPress: () => removePhoto(index) },
-        ].filter(Boolean) as any
+          ...options.filter(opt => opt !== 'Cancel').map(opt => ({
+            text: opt,
+            style: (opt === 'Remove Photo' ? 'destructive' : 'default') as 'destructive' | 'default',
+            onPress: () => handleOptionSelection(opt, index)
+          })),
+          { text: 'Cancel', style: 'cancel', onPress: () => {} }
+        ]
       );
+    }
+  };
+
+  const handleOptionSelection = (option: string, index: number) => {
+    switch (option) {
+      case 'Set as Main Photo':
+        setAsMain(index);
+        break;
+      case 'Replace Photo':
+        pickImage(index);
+        break;
+      case 'Remove Photo':
+        removePhoto(index);
+        break;
     }
   };
 
@@ -157,14 +173,14 @@ export default function PhotoManager({
           {hasPhoto && (
             <View style={styles.mainBadge}>
               <Star size={10} color={Colors.voidBlack} fill={Colors.voidBlack} />
-              <Text style={styles.mainBadgeText}>Default</Text>
+              <Text style={styles.mainBadgeText}>Profile Picture</Text>
             </View>
           )}
         </View>
-        
+
         <Pressable
           style={[
-            styles.heroSlot, 
+            styles.heroSlot,
             !hasPhoto && styles.heroSlotEmpty,
             { width: heroWidth, height: heroHeight }
           ]}
@@ -185,7 +201,7 @@ export default function PhotoManager({
           ) : (
             <View style={styles.emptyHeroContent}>
               <View style={styles.heroPlusIcon}>
-                <Plus size={32} color={Colors.pulseRed} strokeWidth={2.5} />
+                <Plus size={32} color={Colors.pulseRed} strokeWidth={3} />
               </View>
               <Text style={styles.heroEmptyText}>Add Main Photo</Text>
             </View>
@@ -196,18 +212,23 @@ export default function PhotoManager({
   };
 
   const renderSecondaryGrid = () => {
-    // We want maxPhotos - 1 secondary slots
-    const secondarySlots = Array.from({ length: maxPhotos - 1 }).map((_, i) => {
+    // 5 secondary slots max (total 6 including main)
+    const secondarySlots = Array.from({ length: 5 }).map((_, i) => {
       const photoIndex = i + 1;
       const photoUri = photos[photoIndex];
       const isFilled = !!photoUri;
+      // Should show add button if it's the first empty slot or if it has a photo
+      // Don't show add button for slots after the first empty one
+      const showSlot = isFilled || photoIndex === photos.length; 
+
+      if (!showSlot) return null;
 
       return (
         <Pressable
           key={i}
           style={[
-            styles.gridSlot, 
-            !isFilled && styles.gridSlotEmpty, 
+            styles.gridSlot,
+            !isFilled && styles.gridSlotEmpty,
             { width: itemWidth }
           ]}
           onPress={() => isFilled ? handlePhotoTap(photoIndex) : pickImage()}
@@ -216,9 +237,7 @@ export default function PhotoManager({
           {isFilled ? (
             <>
               <Image source={{ uri: photoUri }} style={styles.gridImage} contentFit="cover" />
-              <View style={styles.miniEditButton}>
-                 <MoreHorizontal size={14} color="#FFF" />
-              </View>
+              {/* Optional: Add small X or edit icon */}
             </>
           ) : (
             <Plus size={24} color={Colors.darkTertiary} />
@@ -229,7 +248,7 @@ export default function PhotoManager({
 
     return (
       <View style={styles.gridContainer}>
-        <Text style={styles.sectionLabel}>Additional Photos</Text>
+        {photos.length > 0 && <Text style={styles.sectionLabel}>Additional Photos</Text>}
         <View style={styles.grid}>
           {secondarySlots}
         </View>
@@ -367,3 +386,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
