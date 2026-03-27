@@ -49,7 +49,7 @@ export default function PhotoUploadScreen() {
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <ChevronLeft color={Colors.softWhite} size={28} />
           </Pressable>
-          <Text style={styles.stepIndicator}>Step 2 of 8</Text> 
+          <Text style={styles.stepIndicator}>STEP 2 OF 4</Text> 
           <View style={{ width: 28 }} />
         </View>
 
